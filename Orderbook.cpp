@@ -79,7 +79,7 @@ public:
     Quantity GetInitialQuantity() const{ return initialQuantity_; }
     Quantity GetRemainingQuantity() const{ return remainingQuantity_; }
     Quantity GetFilledQuantity() const{ return GetInitialQuantity() - GetRemainingQuantity(); }
-    
+    bool isFilled() const { return GetRemainingQuantity() == 0; }
     void Fill(Quantity quantity)
     {
         if(quantity > GetRemainingQuantity())
@@ -138,7 +138,7 @@ private:
 ** We are creating Trade Object to represent the situation wehen a trade happens.
 ** Now a Trade object is bascially an aggregation of two trade-info objects --> Bid TradeInfo and Ask TradeInfo
 */
-sturct TradeInfo
+struct TradeInfo
 {
     OrderID orderid_;
     Price price_;
@@ -162,6 +162,150 @@ private:
 };
 
 using Trades = std::vector<Trade>;
+
+class Orderbook
+{
+private:
+    
+    struct OrderEntry
+    {
+        OrderPointer order_{ nullptr };
+        OrderPointers::iterator location_;
+    };
+    
+    //Basically the structure of the map looks like --> map[int] = {list}
+    
+    /*
+    * The bids_ map is ordered in the 'Descending Price' fashion, meaning the highest price comes first,
+    * as this is the maximum amount the buyer is willing to pay for that certain stock or security.
+    */
+    std::map<Price, OrderPointers, std::greater<Price>> bids_;
+    
+    /*
+    * The asks_ map is ordered in the 'Ascending Price' fashion, meaning the lowestt price comes first,
+    * as this is the minimum amount the seller is looking for selling that stock.
+    */
+    std::map<Price, OrderPointers, std::less<Price>> asks_;
+
+    /*
+    * Here we have used an unordered_map for a quick O(1) lookup to any order provided its OrderID is given
+    */
+    std::unordered_map<OrderID, OrderEntry> orders_;
+
+    bool CanMatch(Side side, Price price) const
+    {
+        if(side == Side::Buy)
+        {
+            if(asks_.empty())
+                return false;
+            
+            //The following line returns the pair {Price, OrderPointers}, bestAsk represents the Price in the 
+            // pair and _ underscore represents the OrderPointers. Using _ is a common convention for 
+            // "unused variables" like the OrderPointers list here.
+            const auto& [bestAsk, _] = *asks_.begin();
+            return price >= bestAsk;
+        }
+        else
+        {
+            if(bids_.empty())
+                return false;
+            
+            const auto& [bestBid, _] = *bids_begin();
+            return price <= bestBid;
+        }
+    }
+
+    Trades MatchOrders()
+    {
+        Trades trades;
+        trades.reserve(orders_.size());
+
+        while(true)
+        {
+            if(bids_.empty() || asks_.empty())
+                break;
+            
+            auto& [bidPrice, bids] = *bids_.begin();
+            auto& [askPrice, asks] = *asks_.begin();
+
+            if(bidPrice < askPrice)
+                break;
+            
+            while(bids.size() && asks.size())
+            {
+                auto& bid = bids.front();
+                auto& ask = asks.front();
+
+                Quantity quantity = std::min(bid->GetRemainingQuantity(), ask->GetRemainingQuantity());
+
+                bid->Fill(quantity);
+                ask->Fill(quantity);
+
+                if(bid->isFilled())
+                {
+                    bids.pop_front();
+                    orders_.erase(bid->GetOrderId());
+                }
+
+                if(ask->isFilled())
+                {
+                    asks->pop_front();
+                    orders_.erase(ask->GetOrderId());
+                }
+
+                if(bids.empty())
+                    bids_.erase(bidPrice);
+                
+                if(asks.empty())
+                    asks_.erase(askPrice);
+
+                trades.push_back(Trade{
+                    TradeInfo{ bid->GetOrderId(), bid->GetPrice(), quantity},
+                    TradeInfo{ ask->GetOrderId(), ask->GetPrice(), quantity}
+                    });
+            }
+        }
+
+        if(!bids_.empty())
+        {
+            auto& [_, bids] = *bids_.begin();
+            auto& order = bids.front();
+            if(order->GetOrderType() == OrderType::FillAndKill)
+                CancelOrder(order->GetOrderId());
+        }
+
+        if((!asks_.empty()))
+        {
+            auto& [_,asks] = *asks_.begin();
+            auto& order = asks.front();
+            if(order->GetOrderType() == OrderType::FillAndKill)
+                CancelOrder(order->GetOrderId());
+        }
+
+        return trades;
+    
+    public:
+
+        Trades AddOrder(OrderPointer order)
+        {
+            //Making sure we dont have duplicate orders
+            if( orders_.contains(order->GetOrderId()))
+                return { };
+
+            //Not adding the order to the order book in case the order is Fill&Kill and we are not able to match it at the given moment
+            if(order->GetOrderType() == OrderType::FillAndKill && !CanMatch(order->GetSide(), order->GetPrice()))
+                return { };
+
+            
+        }
+
+    }
+};
+
+
+
+
+
 
 int main()
 {
