@@ -11,6 +11,7 @@
 #include <numeric>
 #include <algorithm>
 #include <unordered_map>
+#include <map>
 #include <unordered_set>
 #include <memory>
 #include <format>
@@ -133,7 +134,35 @@ private:
     Quantity quantity_;
 };
 
-sturct 
+/*
+** We are creating Trade Object to represent the situation wehen a trade happens.
+** Now a Trade object is bascially an aggregation of two trade-info objects --> Bid TradeInfo and Ask TradeInfo
+*/
+sturct TradeInfo
+{
+    OrderID orderid_;
+    Price price_;
+    Quantity quantity_;
+};
+
+class Trade
+{
+public:
+    Trade(const TradeInfo& bidTrade, const TradeInfo& askTrade)
+        : bidTrade{ bidTrade }
+        , askTrade{ askTrade }
+    { }
+
+    const TradeInfo& GetBidTrade() const { return bidTrade };
+    const TradeInfo& GetAskTrade() const { return askTrade };
+
+private:
+    TradeInfo bidTrade_;
+    TradeInfo askTrade_;
+};
+
+using Trades = std::vector<Trade>;
+
 int main()
 {
     return 0;
