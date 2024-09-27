@@ -83,7 +83,7 @@ public:
     void Fill(Quantity quantity)
     {
         if(quantity > GetRemainingQuantity())
-            throw std::logic_error(std::format("Order ({}) cannot be filled for more than its rmeaning quantity.", GetOrderId()))
+            throw std::logic_error(std::format("Order ({}) cannot be filled for more than its rmeaning quantity.", GetOrderId()));
         
         remainingQuantity_ -= quantity;
     }
@@ -149,12 +149,12 @@ class Trade
 {
 public:
     Trade(const TradeInfo& bidTrade, const TradeInfo& askTrade)
-        : bidTrade{ bidTrade }
-        , askTrade{ askTrade }
+        : bidTrade_{ bidTrade }
+        , askTrade_{ askTrade }
     { }
 
-    const TradeInfo& GetBidTrade() const { return bidTrade };
-    const TradeInfo& GetAskTrade() const { return askTrade };
+    const TradeInfo& GetBidTrade() const { return bidTrade_; }
+    const TradeInfo& GetAskTrade() const { return askTrade_; }
 
 private:
     TradeInfo bidTrade_;
@@ -210,7 +210,7 @@ private:
             if(bids_.empty())
                 return false;
             
-            const auto& [bestBid, _] = *bids_begin();
+            const auto& [bestBid, _] = *bids_.begin();
             return price <= bestBid;
         }
     }
@@ -250,7 +250,7 @@ private:
                 //Removing the 'ask' order incase it is completely filled
                 if(ask->isFilled())
                 {
-                    asks->pop_front();
+                    asks.pop_front();
                     orders_.erase(ask->GetOrderId());
                 }
 
@@ -323,7 +323,7 @@ private:
             return MatchOrders();
         }
 
-        void CancelOrder(OrderId orderId)
+        void CancelOrder(OrderID orderId)
         {
             if(!orders_.contains(orderId))
                 return;
@@ -345,7 +345,7 @@ private:
                 auto& orders = asks_.at(price);
                 orders.erase(iterator);
                 if(orders.empty())
-                    orders.erase(price);
+                    asks_.erase(price);
             }
         }
 
@@ -369,8 +369,8 @@ private:
 
             auto CreateLevelInfos = [](Price price, const OrderPointers& orders)
             {
-                return LevelInfo{ price, std::accumulate(orders.begin(), orders.end(), {Quantity}0,
-                    [](std::size_t runningSum, const OrderPointer& order)
+                return LevelInfo{ price, std::accumulate(orders.begin(), orders.end(), (Quantity)0,
+                    [](Quantity runningSum, const OrderPointer& order)
                     { return runningSum + order->GetRemainingQuantity(); }) };
             };
 
