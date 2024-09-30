@@ -14,12 +14,12 @@
 #include <map>
 #include <unordered_set>
 #include <memory>
+#include <cstdint>
 #include <format>
-
 enum class OrderType
 {
     GoodTillCancel,
-    FillAndKill
+    FillAndKill // All or Nothing
 };
 
 //Defines the two sides of an order book
@@ -34,15 +34,17 @@ using Price = std::int32_t;
 using Quantity  = std::uint32_t;
 using OrderID = std::uint64_t;
 
+//LevelInfo is basically the different price levels in the Buy and Sell sides of an Orderbook
 struct LevelInfo
 {
     Price price_;
     Quantity quantity_;
 };
 
-//Alias for the actual order book
+//We use vector of LevelInfo objects to store multiple price levels in the Buy and Sell sides
 using LevelInfos = std::vector<LevelInfo>;
 
+//Class for creating Buy and Sell side LevelInfo vectors in the Orderbook
 class OrderbookLevelInfos
 {
 public:
@@ -59,6 +61,7 @@ private:
     LevelInfos asks_;
 
 };
+
 
 class Order
 {
@@ -83,7 +86,7 @@ public:
     void Fill(Quantity quantity)
     {
         if(quantity > GetRemainingQuantity())
-            throw std::logic_error(std::format("Order ({}) cannot be filled for more than its rmeaning quantity.", GetOrderId()));
+            throw std::logic_error(std::format("Order ({}) cannot be filled for more than its remaining quantity.", GetOrderId()));
         
         remainingQuantity_ -= quantity;
     }
@@ -97,9 +100,11 @@ private:
     Quantity remainingQuantity_ ;
 };
 
+
+
 /*
-** Here we are using a shared pointer(smart pointer) that manages the lifetime of a dynamically allocated object.
-   allowing multiple shared owenership of the object. Here this 'Order Pointer is created on the heap.
+** Here we are using a shared pointer(smart pointer) that manages the lifetime of a dynamically allocated object,
+   allowing multiple shared owenership of the object. Here this 'Order Pointer' is created on the heap.
 ** It is more efficient to use "std::make_shared" insted of manually using "new" because it allocates both
    the object and the control block (which stores the reference counts) in a single memory location. 
 */
@@ -107,8 +112,9 @@ using OrderPointer = std::shared_ptr<Order>;
 using OrderPointers = std::list<OrderPointer>;
 
 
+// Order Modify is basically used to modify an already existing order, since we already have a pointer pointing to the previous order when we make changes to that 
 class OrderModify
-{
+{ 
 public:
     OrderModify(OrderID orderid, Side side, Price price, Quantity quantity)
         : orderid_{ orderid }
@@ -134,8 +140,10 @@ private:
     Quantity quantity_;
 };
 
+
+
 /*
-** We are creating Trade Object to represent the situation wehen a trade happens.
+** We are creating Trade Object to represent the situation when a trade happens.
 ** Now a Trade object is bascially an aggregation of two trade-info objects --> Bid TradeInfo and Ask TradeInfo
 */
 struct TradeInfo
@@ -161,7 +169,11 @@ private:
     TradeInfo askTrade_;
 };
 
+//Here we are using a vector to store all Trades that take place. These trade objects consist of various bidTrade and askTrade structure objects.
 using Trades = std::vector<Trade>;
+
+
+
 
 class Orderbook
 {
@@ -182,7 +194,7 @@ private:
     std::map<Price, OrderPointers, std::greater<Price>> bids_;
     
     /*
-    * The asks_ map is ordered in the 'Ascending Price' fashion, meaning the lowestt price comes first,
+    * The asks_ map is ordered in the 'Ascending Price' fashion, meaning the lowest price comes first,
     * as this is the minimum amount the seller is looking for selling that stock.
     */
     std::map<Price, OrderPointers, std::less<Price>> asks_;
@@ -192,6 +204,8 @@ private:
     */
     std::unordered_map<OrderID, OrderEntry> orders_;
 
+
+
     bool CanMatch(Side side, Price price) const
     {
         if(side == Side::Buy)
@@ -199,11 +213,12 @@ private:
             if(asks_.empty())
                 return false;
             
-            //The following line returns the pair {Price, OrderPointers}, bestAsk represents the Price in the 
-            // pair and _ underscore represents the OrderPointers. Using _ is a common convention for 
-            // "unused variables" like the OrderPointers list here.
+            /*
+            ** The following line returns the pair {Price, OrderPointers}, 'bestAsk' represents the Price in the pair and '_' underscore represents the OrderPointers. 
+            ** Using _ is a common convention for "unused variables" like the OrderPointers list here.
+            */
             const auto& [bestAsk, _] = *asks_.begin();
-            return price >= bestAsk;
+            return price >= bestAsk;   // Return 'True' if the Buy price is greater or equal to the Ask Price
         }
         else
         {
@@ -211,9 +226,11 @@ private:
                 return false;
             
             const auto& [bestBid, _] = *bids_.begin();
-            return price <= bestBid;
+            return price <= bestBid;  // Return 'True' if the Ask price is greater or equal to the Buy Price
         }
     }
+
+
 
     Trades MatchOrders()
     {
@@ -233,8 +250,8 @@ private:
             
             while(bids.size() && asks.size())
             {
-                auto& bid = bids.front();
-                auto& ask = asks.front();
+                auto& bid = bids.front(); // 'bid' here is the topmost pointer to one of the orders in the OrderPointers list at a particular price.
+                auto& ask = asks.front(); // 'ask' here is the topmost pointer to one of the orders in the OrderPointers list at a particular price.
 
                 Quantity quantity = std::min(bid->GetRemainingQuantity(), ask->GetRemainingQuantity());
 
@@ -270,8 +287,8 @@ private:
         }
 
         /*
-        * Now after the order matching loop we check if there are any bids and asks remaining and if that particular
-        * bid or ask is of the type 'Fill&Kill' then we just cancel the remaining order.
+        * Now after the order matching loop we check if there are any orders remaining in bids and asks lists and if that particular 
+          order is of the type 'Fill&Kill' then we just cancel that order.
         */
         if(!bids_.empty())
         {
@@ -355,7 +372,9 @@ private:
                 return { };
             
             const auto& [existingOrder, _] = orders_.at(order.GetOrderId());
-            CancelOrder(order.GetOrderId());
+            CancelOrder(order.GetOrderId()); 
+            // Here we deleted this order from the 'orders_'(unordered_map) and therefore we need 'ToOrderPointer' 
+            // to create a new order with all the details from the order that previously existed and make changes to it.
             return AddOrder(order.ToOrderPointer(existingOrder->GetOrderType()));
         }
 
@@ -367,6 +386,7 @@ private:
             bidInfos.reserve(orders_.size());
             askInfos.reserve(orders_.size());
 
+            // Lambda Function
             auto CreateLevelInfos = [](Price price, const OrderPointers& orders)
             {
                 return LevelInfo{ price, std::accumulate(orders.begin(), orders.end(), (Quantity)0,
