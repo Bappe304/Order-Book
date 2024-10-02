@@ -16,10 +16,18 @@
 #include <memory>
 #include <cstdint>
 #include <format>
+#include <chrono>
+#include <ctime>
+
+#include "Constants.h"
+#include "Orderbook.h"
+
 enum class OrderType
 {
     GoodTillCancel,
-    FillAndKill // All or Nothing
+    FillAndKill, // All or Nothing
+    Market,
+    GoodForDay,
 };
 
 //Defines the two sides of an order book
@@ -66,17 +74,22 @@ private:
 class Order
 {
 public:
-    Order(OrderType ordertype, OrderID orderid, Side side, Price price, Quantity quantity)
-        : ordertype_{ ordertype }
-        , orderid_{ orderid }
+    Order(OrderType orderType, OrderID orderid, Side side, Price price, Quantity quantity)
+        : orderType_{ orderType }
+        , orderId_{ orderid }
         , side_{ side }
         , price_{ price }
         , initialQuantity_{ quantity }
         , remainingQuantity_{ quantity }
     { }
 
-    OrderType GetOrderType() const{ return ordertype_; };
-    OrderID GetOrderId() const{ return orderid_; }
+
+    Order(OrderID orderId, Side side, Quantity quantity)
+        :Order(OrderType::Market, orderId, side, Constants::InvalidPrice, quantity)
+    { }
+
+    OrderType GetOrderType() const{ return orderType_; };
+    OrderID GetOrderId() const{ return orderId_; }
     Side GetSide() const{ return side_; }
     Price GetPrice() const{ return price_; }
     Quantity GetInitialQuantity() const{ return initialQuantity_; }
@@ -92,8 +105,8 @@ public:
     }
 
 private:
-    OrderType ordertype_ ;
-    OrderID orderid_ ;
+    OrderType orderType_ ;
+    OrderID orderId_ ;
     Side side_ ;
     Price price_ ;
     Quantity initialQuantity_ ;
@@ -317,6 +330,25 @@ private:
             if( orders_.contains(order->GetOrderId()))
                 return { };
 
+            // Till now the market orders are being executed at the worst price available
+            if(order->GetOrderType() == OrderType::Market)
+            {
+                if(order->GetSide() == Side::Buy && !asks_.empty())
+                {
+                    const auto& [worstAsk, _] = *asks_.rbegin();
+                    order->ToGoodTillCancel(worstAsk);
+                }
+                else if(order->GetSide() == Side::Sell && !bids_.empty())
+                {
+                    const auto& [worstBid, _] = *bids_.rbegin();
+                    order->ToGoodTillCancel(worstBid);
+                }
+                else
+                    return { };
+            }
+
+
+
             //Not adding the order to the order book in case the order is Fill&Kill and we are not able to match it at the given moment
             if(order->GetOrderType() == OrderType::FillAndKill && !CanMatch(order->GetSide(), order->GetPrice()))
                 return { };
@@ -339,6 +371,60 @@ private:
             orders_.insert({order->GetOrderId(), OrderEntry{ order, iterator }});
             return MatchOrders();
         }
+
+
+
+
+        void Orderbook::PruneGoodForDayOrders()
+        {
+            using namespace std::chrono;
+            const auto end = hours(16);
+
+                while(true)
+                {
+                    const auto now = system_clock::now(); // returns the time as a 'time_point' object, which is not human-readable.
+                    const auto now_c = system_clock::to_time_t(now);  // converts 'now' into a 'std::time_t' which is more of a traditional way.(Number of seconds since Unix epoch: January 1, 1970) 
+                    std::tm now_parts;
+                    localtime_s(&now_parts, &now_c);  // Converts the 'now_c' from std::time_t to 'now_parts' which is std::tm (basically splits into components like year, month, day, hours, min, sec). 
+                
+                    if(now_parts.tm_hour >= end.count())
+                        now_parts.tm_mday += 1;
+                    
+                    now_parts.tm_hour = end.count();
+                    now_parts.tm_min = 0;
+                    now_parts.tm_sec = 0;
+
+                    auto next = system_clock::from_time_t(mktime(&now_parts));
+                    auto till = next - now + milliseconds(100);
+
+                    {
+                        std::unique_lock ordersLock { ordersMutex_ };
+
+                        if(shutdown_.load(std::memory_order_acquire) || 
+                                shutdownConditionVariable_.wait_for(ordersLock, till) == std::cv_status::no_timeout)
+                                return;
+                    }
+
+                    OrderIDs orderIds;
+                    
+                    {
+                        std::scoped::lock ordersLock{ ordersMutex_};
+
+                        for(const auto& [_, entry] : orders_)
+                        {
+                            const auto& [order, _] = entry;
+                            if(order->GetOrderType() != OrderType::GoodForDay)
+                                continue;
+                            
+                            orderIds.push_back(order->GetOrderId());
+                        }
+                    }
+
+                    CancelOrders(orderIds);                
+                }
+
+        }
+
 
         void CancelOrder(OrderID orderId)
         {
