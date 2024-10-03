@@ -296,6 +296,9 @@ private:
                     TradeInfo{ bid->GetOrderId(), bid->GetPrice(), quantity},
                     TradeInfo{ ask->GetOrderId(), ask->GetPrice(), quantity}
                     });
+
+                OnOrderMatched(bid->GetPrice(), quantity, bid->isFilled());
+                OnOrderMatched(ask->GetPrice(), quantity, ask->isFilled());
             }
         }
 
@@ -504,15 +507,53 @@ private:
         }
 
 
+
+        // This function is to check if we can Fully Fill an order on the buy or sell side on a given pricelevel.
+        // The main goal is to asses whether there is enough liquidity  in the order book at the relevant price levels 
+        // satisfy the quantity requested by the order.
+        bool Orderbook::CanFullyFill(Side side, Price price, Quantity quantity) const
+        {
+            if(!CanMatch(side, price))
+                return false;
+            
+            std::optional<Price> threshold;
+
+            if(side == Side::Buy)
+            {
+                const auto [bestAskPrice, _] = *asks_.begin();
+                threshold = bestAskPrice;
+            }
+            else
+            {
+                const auto [bestbidPrice, _] = *bids_.begin();
+                threshold = bestbidPrice;
+            }
+
+            for(const auto& [levelPrice, levelData] : data_)
+            {
+                if(threshold.has_value() && 
+                    (side == Side::Buy && threshold.value() > levelPrice) ||
+                    (side == Side::Sell && threshold.value() < levelPrice))
+                    continue;
+                
+                if((side == Side::Buy && levelPrice > price) ||
+                    (side == Side::Sell &&  levelPrice < price))
+                    continue;
+                
+                if(quantity <= levelData.quantity_)
+                    return true;
+                
+                quantity -= levelData.quantity_;
+            }
+        }
+
+
+
         void Orderbook::CancelOrder(OrderID orderId)
         {
             std::scoped_lock ordersLock { ordersMutex_ };
             CancelOrderInternal(orderId);
         }
-
-
-
-
 
 
 
