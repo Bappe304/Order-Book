@@ -348,7 +348,6 @@ private:
             }
 
 
-
             //Not adding the order to the order book in case the order is Fill&Kill and we are not able to match it at the given moment
             if(order->GetOrderType() == OrderType::FillAndKill && !CanMatch(order->GetSide(), order->GetPrice()))
                 return { };
@@ -398,7 +397,7 @@ private:
                     auto till = next - now + milliseconds(100);
 
                     {
-                        std::unique_lock ordersLock { ordersMutex_ };
+                        std::unique_lock ordersLock { ordersMutex_ };  // unique_lock acquires the lock right away
 
                         if(shutdown_.load(std::memory_order_acquire) || 
                                 shutdownConditionVariable_.wait_for(ordersLock, till) == std::cv_status::no_timeout)
@@ -408,7 +407,7 @@ private:
                     OrderIDs orderIds;
                     
                     {
-                        std::scoped::lock ordersLock{ ordersMutex_};
+                        std::scoped_lock ordersLock{ ordersMutex_};
 
                         for(const auto& [_, entry] : orders_)
                         {
@@ -425,8 +424,15 @@ private:
 
         }
 
+        void Orderbook::CancelOrders(OrderIDs orderIds)
+        {
+            std::scoped_lock ordersLock{ ordersMutex_ };
+            for(const auto& orderId : orderIds)
+                CancelOrderInternal(orderId);
+        }
 
-        void CancelOrder(OrderID orderId)
+        
+        void Orderbook::CancelOrderInternal(OrderID orderId)
         {
             if(!orders_.contains(orderId))
                 return;
@@ -450,7 +456,66 @@ private:
                 if(orders.empty())
                     asks_.erase(price);
             }
+
+            OnOrderCancelled(order);
         }
+
+
+        void Orderbook::OnOrderCancelled(OrderPointer order)
+        {
+            UpdateLevelData(order->GetPrice(), order->GetRemainingQuantity(), LevelData::Action::Remove);
+        }
+
+        void Orderbook::OnOrderAdded(OrderPointer order)
+        {
+            UpdateLevelData(order->GetPrice(), order->GetInitialQuantity(), LevelData::Action::Add);
+        }
+
+        void Orderbook::OnOrderMatched(Price price, Quantity quantity, bool isFullyFilled)
+        {   
+            // Updates according to FullyFilled or Not.
+            UpdateLevelData(price, quantity, isFullyFilled ? LevelData::Action::Remove : LevelData::Action::Match);
+        }
+
+        void Orderbook::UpdateLevelData(Price price, Quantity quantity, LevelData::Action action)
+        {
+            // We get the LevelData for the specific price 
+            auto& data = data_[price];
+
+            // We change the total count of orders on that specific price level according to the 'Action'
+            // Match --> We do not change anything in this case as it might be possible that the order wasnt fully matched.
+            // Add --> We add 1 to the count of orders. (In the case of AddOrder() ).
+            // Remove --> We reduce the count of orders by 1. (In the case of CancelOrder() ). 
+            data.count_ += action == LevelData::Action::Remove ? -1 : action == LevelData::Action::Add ? 1 : 0 ;
+            
+            // Similar implementation for the quantity of the price level
+            if(action == LevelData::Action::Remove || action == LevelData::Action::Match)
+            {
+                data.quantity_ -= quantity;
+            }
+            else
+            {
+                data.quantity_ += quantity;
+            }
+
+            // In case there are no orders left for that particular price level we delete the price level.
+            if(data.count_ == 0)
+                data_.erase(price);
+        }
+
+
+        void Orderbook::CancelOrder(OrderID orderId)
+        {
+            std::scoped_lock ordersLock { ordersMutex_ };
+            CancelOrderInternal(orderId);
+        }
+
+
+
+
+
+
+
 
         Trades MatchOrder(OrderModify order)
         {

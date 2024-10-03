@@ -22,11 +22,23 @@ private:
         OrderPointers::iterator location_;
     };
 
-    
+    struct LevelData
+    {
+        Quantity quantity_{ };
+        Quantity count_{ };
 
-    //Basically the structure of the map looks like --> map[int] = {list}
-    
+        enum class Action 
+        {
+            Add,
+            Remove,
+            Match,
+        };
+    };
+
+
+    std::unordered_map<Price,LevelData> data_;
     /*
+    / Basically the structure of the map looks like --> map[int] = {list}
     * The bids_ map is ordered in the 'Descending Price' fashion, meaning the highest price comes first,
     * as this is the maximum amount the buyer is willing to pay for that certain stock or security.
     */
@@ -47,7 +59,8 @@ private:
 
 
 
-
+public:
+    Orderbook();
 
 
 
