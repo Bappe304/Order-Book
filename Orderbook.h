@@ -54,23 +54,39 @@ private:
     * Here we have used an unordered_map for a quick O(1) lookup to any order provided its OrderID is given
     */
     std::unordered_map<OrderID, OrderEntry> orders_;
+    mutable std::mutex ordersMutex_;
+    std::thread ordersPruneThread_;
+    std::condition_variable shutdownConditionVariable_;
+    std::atomic<bool> shutdown_{false};
 
+    void PruneGoodForDayOrders();
 
+    void CancelOrders(OrderIDs orderIds);
+    void CancelOrderInternal(OrderID orderId);
 
+    void onOrderCancelled(OrderPointer order);
+    void onOrderAdded(OrderPointer order);
+    void onOrderMatched(Price price, Quantity quantity, bool isFullyFilled);
+    void UpdateLevelData(Price price, Quantity quantity, LevelData::Action action);
+
+    bool CanFullyFill(Side side, Price price, Quantity quantity) const;
+    bool CanMatch(Side side, Price price) const;
+    Trades MatchOrders();
 
 
 public:
     Orderbook();
+    Orderbook(const Orderbook&) = delete;
+    void operator=(const Orderbook&) = delete;
+    Orderbook(Orderbook&&) = delete;
+    void operator=(Orderbook&&) = delete;
+    ~Orderbook();
 
+    Trades AddOrder(OrderPointer order);
+    void CancelOrder(OrderID orderId);
+    Trades ModifyOrder(OrderModify order);
 
-
-
-
-
-
-
-
-
-
+    std::size_t Size() const;
+    OrderbookLevelInfos GetOrderInfos() const;
 
 };

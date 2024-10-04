@@ -42,6 +42,15 @@ class Order
             remainingQuantity_ -= quantity;
         }
 
+        void ToGoodTillCancel(Price price)
+        {
+            if(GetOrderType() != OrderType::Market)
+                throw std::logic_error(std::format("Order ({}) cannot be filled for more than its remaning quantity.", GetOrderId()));
+
+                price_ = price;
+                orderType_ = OrderType::GoodTillCancel;
+        }
+
 private:
     OrderType orderType_ ;
     OrderID orderId_ ;

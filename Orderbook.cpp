@@ -141,7 +141,7 @@ public:
     Price GetPrice() const{ return price_; }
     Quantity GetQuantity() const{ return quantity_; }
 
-    OrderPointer ToOrderPointer(OrderType type)
+    OrderPointer ToOrderPointer(OrderType type) const
     {
         return std::make_shared<Order>(type, GetOrderId(), GetSide(), GetPrice(), GetQuantity());
     }
@@ -349,11 +349,14 @@ private:
                 else
                     return { };
             }
-
-
+            
             //Not adding the order to the order book in case the order is Fill&Kill and we are not able to match it at the given moment
             if(order->GetOrderType() == OrderType::FillAndKill && !CanMatch(order->GetSide(), order->GetPrice()))
                 return { };
+            
+            if(order->GetOrderType() == OrderType::FillOrKill && !CanFullyFill(order->GetSide(), order->GetPrice(), order->GetInitialQuantity()))
+                return { };
+
 
             OrderPointers::iterator iterator;
 
@@ -545,6 +548,8 @@ private:
                 
                 quantity -= levelData.quantity_;
             }
+
+            return false;
         }
 
 
