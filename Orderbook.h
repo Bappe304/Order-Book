@@ -64,9 +64,9 @@ private:
     void CancelOrders(OrderIDs orderIds);
     void CancelOrderInternal(OrderID orderId);
 
-    void onOrderCancelled(OrderPointer order);
-    void onOrderAdded(OrderPointer order);
-    void onOrderMatched(Price price, Quantity quantity, bool isFullyFilled);
+    void OnOrderCancelled(OrderPointer order);
+    void OnOrderAdded(OrderPointer order);
+    void OnOrderMatched(Price price, Quantity quantity, bool isFullyFilled);
     void UpdateLevelData(Price price, Quantity quantity, LevelData::Action action);
 
     bool CanFullyFill(Side side, Price price, Quantity quantity) const;

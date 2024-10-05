@@ -17,3 +17,7 @@ private:
     TradeInfo bidTrade_;
     TradeInfo askTrade_;
 };
+
+
+//Here we are using a vector to store all Trades that take place. These trade objects consist of various bidTrade and askTrade structure objects.
+using Trades = std::vector<Trade>;

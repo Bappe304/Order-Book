@@ -2,6 +2,7 @@
 
 #include "LevelInfo.h"
 
+//Class for creating Buy and Sell side LevelInfo vectors in the Orderbook
 class OrderbookLevelInfos
 {
 public:

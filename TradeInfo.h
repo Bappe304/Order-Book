@@ -2,9 +2,14 @@
 
 #include "Usings.h"
 
+
+/*
+** We are creating Trade Object to represent the situation when a trade happens.
+** Now a Trade object is bascially an aggregation of two trade-info objects --> Bid TradeInfo and Ask TradeInfo
+*/
 struct TradeInfo
 {
-    OrderId orderid_;
+    OrderID orderid_;
     Price price_;
     Quantity quantity_;
 };

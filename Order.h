@@ -12,6 +12,7 @@
 
 class Order
 {
+public:
     Order(OrderType orderType, OrderID orderid, Side side, Price price, Quantity quantity)
         : orderType_{ orderType }
         , orderId_{ orderid }
@@ -60,5 +61,12 @@ private:
     Quantity remainingQuantity_ ;
 };
 
+
+/*
+** Here we are using a shared pointer(smart pointer) that manages the lifetime of a dynamically allocated object,
+   allowing multiple shared owenership of the object. Here this 'Order Pointer' is created on the heap.
+** It is more efficient to use "std::make_shared" insted of manually using "new" because it allocates both
+   the object and the control block (which stores the reference counts) in a single memory location. 
+*/
 using OrderPointer = std::shared_ptr<Order>;
 using OrderPointers = std::list<OrderPointer>;
